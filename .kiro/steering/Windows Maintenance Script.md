@@ -25,20 +25,36 @@ Both scripts run the same six steps in this order; keep them in sync:
 3. Flush DNS and reset Winsock + IP stack (`ipconfig /flushdns`, `netsh winsock reset`, `netsh int ip reset`)
 4. System File Checker (`sfc /scannow`)
 5. Repair image health (`DISM /Online /Cleanup-Image /RestoreHealth`)
-6. Schedule Check Disk for next reboot (`chkdsk /r`)
+6. Schedule Check Disk for next reboot (`chkdsk /r` against `$env:SystemDrive`)
 
 ## Safety-first principles (non-negotiable)
 
 The PowerShell version exists to add the safety rails the batch file lacks. Preserve all of them:
 
-- Require elevation: `#requires -RunAsAdministrator` plus the `Test-Administrator` guard (exit 1 if not elevated).
-- Create a System Restore point before making changes (`New-RestorePointSafe`).
+- Require elevation: `#requires -RunAsAdministrator` blocks non-elevated *file* runs; a runtime
+  `Test-Administrator` guard covers the `iex` path (where `#requires` is ignored).
+- Create a System Restore point before making changes (`New-SystemRestorePoint`).
 - Log the full session via `Start-Transcript` into `$LogDirectory` (default `C:\ProgramData\GeekLord\Logs`).
-- Gate disruptive actions behind confirmation prompts (`Confirm-Action` → `$PSCmdlet.ShouldContinue`).
-- Support `-WhatIf` on destructive operations via `SupportsShouldProcess` and `$PSCmdlet.ShouldProcess`.
+- Gate disruptive actions behind confirmation prompts (`Get-Confirmation`).
+- Preview with `-WhatIf`; auto-approve for automation with `-Yes`.
 - Offer a `-Skip<Step>` switch for every step.
 - Never abort the session on a single step failure: catch, record, and continue.
 - Do not add telemetry, extra network calls, or silent destructive actions.
+
+## Must run under `irm ... | iex` (critical)
+
+The script is distributed as a one-liner, so it must work when its text is piped to
+`Invoke-Expression`, not only when run as a `.ps1`. Under `iex` there is no cmdlet context:
+
+- Do NOT use `$PSCmdlet`, `[CmdletBinding(SupportsShouldProcess)]`, `ShouldProcess`, or
+  `ShouldContinue` — `$PSCmdlet` is `$null` under `iex` and any method call on it throws.
+  Implement confirmation and preview yourself (`Get-Confirmation`, custom `-WhatIf`/`-Yes`).
+- Do NOT rely on `#requires` for enforcement under `iex` (it is ignored); keep the runtime
+  `Test-Administrator` check.
+- Do NOT use `exit` or a top-level `return` for control flow — they can terminate the user's
+  session. Put logic in functions and gate the bootstrap with `if/else`.
+- Native tools do not throw on failure. After running one, check `$LASTEXITCODE` and map a
+  non-zero result to a `Warning`/`Error` status instead of a false `Success`.
 
 ## PowerShell conventions
 
@@ -48,20 +64,23 @@ The PowerShell version exists to add the safety rails the batch file lacks. Pres
 - Hold session state in `$script:`-scoped variables (`$script:StepResults`, `$script:LogFile`, `$script:BrandName`, ...).
 - Emit console output only through the `Write-*` helpers (`Write-Banner`, `Write-Step`, `Write-Info`,
   `Write-Ok`, `Write-WarnLine`); do not scatter raw colored `Write-Host` calls.
-- Run every maintenance action through `Invoke-SafeStep`, and record the outcome with `Add-StepResult`
-  (Time/Step/Status/Details) so the closing summary table stays complete.
+- Run every numbered maintenance action through `Invoke-MaintenanceStep`, which records the
+  outcome with `Add-StepResult` (Time/Step/Status/Details) so the closing summary stays complete.
 - Read error text from `$_.Exception.Message`.
 - Wrap the main flow in `try { } finally { Stop-Logging }` so logging always closes.
 
 ## Per-step pattern
 
-Each step follows: check `-Skip<Step>` → `if ($PSCmdlet.ShouldProcess(...))` → `Confirm-Action`
-for disruptive steps → `Invoke-SafeStep`. Record a `Skipped` status with a reason on every path
-that does not run (skip switch, declined prompt, or `-WhatIf`).
+Numbered steps go through `Invoke-MaintenanceStep` with `-Name`, `-Description`, `-Action`
+(a scriptblock), optional `-RequiresConfirmation`/`-ConfirmQuestion`, and `-Skip`/`-SkipReason`.
+It resolves in this order: skip check → `-WhatIf` preview → `Get-Confirmation` (when required)
+→ run the action → status from `$LASTEXITCODE` (0 = `Success`, non-zero = `Warning`, thrown =
+`Error`). Every non-executing path records a `Skipped`/`Preview`/`Cancelled` status with a reason.
 
 ## When changing the pipeline
 
-- Add or remove the matching `-Skip<Step>` switch and update `$totalSteps` and the `[STEP x/y]` counters.
+- Add or remove the matching `-Skip<Step>` switch, add an `Invoke-MaintenanceStep` call, and update
+  `$script:TotalSteps` (the `[STEP x/y]` counter advances automatically via `$script:StepIndex`).
 - Mirror the change in `Computer Maintainance.bat` and in the `<pre><code>` copy inside `blog_post.html`
   (HTML-escape as needed, e.g. `&` becomes `&amp;`).
 - Keep the `GeekLord Forge Maintenance` brand and the hosted `irm ... | iex` one-liner consistent across all files.

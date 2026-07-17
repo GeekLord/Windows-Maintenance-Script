@@ -40,7 +40,9 @@ is written to a transcript log, and a restore point is created up front when pos
 - Full session transcript logging to a configurable directory.
 - Confirmation prompts for disruptive actions (networking resets, disk check scheduling).
 - `-WhatIf` support to preview what would run without changing anything.
+- `-Yes` to auto-approve every prompt for unattended or automated runs.
 - A `-Skip<Step>` switch for every task, so you can run only what you need.
+- Runs correctly both as a downloaded file and via the `irm ... | iex` one-liner.
 - Continues on error: a failed step is recorded but does not abort the session.
 - A clear end-of-run summary table showing the status of every step.
 
@@ -56,14 +58,15 @@ step 1.
 | 3 | Reset DNS and network stack | `ipconfig /flushdns`, `netsh winsock reset`, `netsh int ip reset` | A restart may be needed for full effect. Prompts before running. |
 | 4 | System File Checker | `sfc /scannow` | Scans and repairs protected system files. |
 | 5 | Repair Windows image | `DISM /Online /Cleanup-Image /RestoreHealth` | Repairs the component store the SFC relies on. |
-| 6 | Schedule Check Disk | `chkdsk /r` | Scheduled for the next reboot. Can significantly increase restart time. Prompts before running. |
+| 6 | Schedule Check Disk | `chkdsk <system drive> /r` | Targets the actual system drive (usually `C:`). Scheduled for the next reboot. Can significantly increase restart time. Prompts before running. |
 
 ## Safety features
 
 Forge Maintenance exists to add the guardrails a raw batch file lacks:
 
-- **Requires elevation.** The script declares `#requires -RunAsAdministrator` and also
-  verifies the current session is elevated, exiting early with a clear message if not.
+- **Requires elevation.** The script declares `#requires -RunAsAdministrator` (which
+  blocks non-elevated file runs) and also verifies elevation at runtime, so it refuses to
+  run with a clear message even when launched via `irm ... | iex`.
 - **Restore point first.** A `MODIFY_SETTINGS` restore point named
   `GeekLord Forge Maintenance - <timestamp>` is created before maintenance changes.
   Windows only allows one restore point per 24 hours by default, so this may be skipped
@@ -71,9 +74,12 @@ Forge Maintenance exists to add the guardrails a raw batch file lacks:
 - **Transcript logging.** The entire session (commands and output) is captured with
   `Start-Transcript` and saved to a timestamped log file.
 - **Confirmation prompts.** Disruptive steps ask for confirmation before running.
-- **Preview mode.** Common `-WhatIf` and `-Confirm` parameters are supported so you can
-  see what would happen before committing.
+- **Preview mode.** `-WhatIf` shows exactly what each step would do without making any
+  changes. Use `-Yes` to auto-approve prompts for unattended runs.
 - **Selective execution.** Every step has a `-Skip<Step>` switch.
+- **Accurate status.** Native tools (WinGet, `netsh`, `sfc`, DISM, `chkdsk`) are checked
+  by exit code, so a step that fails is reported as `Warning`/`Error` rather than a false
+  `Success`.
 - **Fault tolerant.** Each step is wrapped in error handling; a failure is logged and the
   run continues to the next step.
 
@@ -116,9 +122,11 @@ in an elevated PowerShell window:
 irm https://geeklord.com/forge-maintenance.ps1 | iex
 ```
 
-This fetches the script and runs it in the current session. Only use this pattern with a
-source you trust and, ideally, after reading the script at least once. See
-[Responsible use and security](#responsible-use-and-security).
+This fetches the script and runs it in the current session. Launched this way it runs
+interactively and prompts before each disruptive step, using its built-in defaults
+(parameters and `-Skip*` switches can only be passed when you run the downloaded file).
+Only use this pattern with a source you trust and, ideally, after reading the script at
+least once. See [Responsible use and security](#responsible-use-and-security).
 
 ## Usage
 
@@ -146,8 +154,8 @@ Preview everything without making any changes:
 | `-SkipCheckDisk` | switch | off | Skip scheduling Check Disk. |
 | `-SkipRestorePoint` | switch | off | Skip creating a System Restore point. |
 | `-LogDirectory` | string | `C:\ProgramData\GeekLord\Logs` | Directory where transcript logs are written. |
-| `-WhatIf` | common | - | Preview supported actions without executing them. |
-| `-Confirm` | common | - | Prompt for confirmation on supported actions. |
+| `-WhatIf` | switch | off | Preview every step without making any changes. |
+| `-Yes` | switch | off | Answer every confirmation prompt automatically (unattended/automated runs). |
 
 ## Examples
 
@@ -181,13 +189,20 @@ Preview the whole run without changing anything:
 .\forge-maintenance.ps1 -WhatIf
 ```
 
+Run unattended, auto-approving every prompt:
+
+```powershell
+.\forge-maintenance.ps1 -Yes
+```
+
 ## Logging and reporting
 
 - Each run writes a transcript to `<LogDirectory>\forge-maintenance_<yyyyMMdd_HHmmss>.log`.
 - The default log directory is `C:\ProgramData\GeekLord\Logs`; override it with
   `-LogDirectory`.
 - At the end of the session the script prints a summary table listing every step with its
-  timestamp, status (`Success`, `Skipped`, `Warning`, `Error`), and details.
+  timestamp, status (`Success`, `Skipped`, `Warning`, `Error`, `Preview`, or `Cancelled`),
+  and details.
 - Review the transcript for a complete record of the commands that ran and their output.
 
 ## Legacy batch script
@@ -225,8 +240,8 @@ popular, and how to weigh its risks.
 
 ## Troubleshooting
 
-- **"Please run this script in an elevated PowerShell window."** Start PowerShell with
-  *Run as administrator* and try again.
+- **"must run in an elevated PowerShell window"** (or a `ScriptRequiresElevation` error).
+  Start PowerShell with *Run as administrator* and try again.
 - **The script will not run / execution policy error.** Unblock the file and allow it for
   the current session:
 
