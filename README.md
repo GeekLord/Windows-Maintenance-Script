@@ -25,13 +25,9 @@ It is the modern, safer successor to a plain batch file: same core maintenance j
 
 ## Overview
 
-`forge-maintenance.ps1` runs a fixed, well-understood sequence of Windows maintenance
-tasks: it updates installed applications, refreshes networking, verifies and repairs
-core Windows components, and can schedule a disk check for the next reboot.
+`forge-maintenance.ps1` runs a fixed, well-understood sequence of Windows maintenance tasks: it updates installed applications, refreshes networking, verifies and repairs core Windows components, and can schedule a disk check for the next reboot.
 
-The design goal is to make a "maintenance one-liner" that is safe to publish and easy to
-audit. Every action is optional, disruptive steps ask before they run, the whole session
-is written to a transcript log, and a restore point is created up front when possible.
+The design goal is to make a "maintenance one-liner" that is safe to publish and easy to audit. Every action is optional, disruptive steps ask before they run, the whole session is written to a transcript log, and a restore point is created up front when possible.
 
 ## Features
 
@@ -48,8 +44,7 @@ is written to a transcript log, and a restore point is created up front when pos
 
 ## What it does
 
-The script runs these steps in order. A System Restore point is attempted first, before
-step 1.
+The script runs these steps in order. A System Restore point is attempted first, before step 1.
 
 | # | Step | Underlying commands | Notes |
 |---|------|---------------------|-------|
@@ -64,32 +59,21 @@ step 1.
 
 Forge Maintenance exists to add the guardrails a raw batch file lacks:
 
-- **Requires elevation.** The script declares `#requires -RunAsAdministrator` (which
-  blocks non-elevated file runs) and also verifies elevation at runtime, so it refuses to
-  run with a clear message even when launched via `irm ... | iex`.
-- **Restore point first.** A `MODIFY_SETTINGS` restore point named
-  `GeekLord Forge Maintenance - <timestamp>` is created before maintenance changes.
-  Windows only allows one restore point per 24 hours by default, so this may be skipped
-  by the OS.
-- **Transcript logging.** The entire session (commands and output) is captured with
-  `Start-Transcript` and saved to a timestamped log file.
+- **Requires elevation.** The script declares `#requires -RunAsAdministrator` (which blocks non-elevated file runs) and also verifies elevation at runtime, so it refuses to run with a clear message even when launched via `irm ... | iex`.
+- **Restore point first.** A `MODIFY_SETTINGS` restore point named `GeekLord Forge Maintenance - <timestamp>` is created before maintenance changes. Windows only allows one restore point per 24 hours by default, so this may be skipped by the OS.
+- **Transcript logging.** The entire session (commands and output) is captured with `Start-Transcript` and saved to a timestamped log file.
 - **Confirmation prompts.** Disruptive steps ask for confirmation before running.
-- **Preview mode.** `-WhatIf` shows exactly what each step would do without making any
-  changes. Use `-Yes` to auto-approve prompts for unattended runs.
+- **Preview mode.** `-WhatIf` shows exactly what each step would do without making any changes. Use `-Yes` to auto-approve prompts for unattended runs.
 - **Selective execution.** Every step has a `-Skip<Step>` switch.
-- **Accurate status.** Native tools (WinGet, `netsh`, `sfc`, DISM, `chkdsk`) are checked
-  by exit code, so a step that fails is reported as `Warning`/`Error` rather than a false
-  `Success`.
-- **Fault tolerant.** Each step is wrapped in error handling; a failure is logged and the
-  run continues to the next step.
+- **Accurate status.** Native tools (WinGet, `netsh`, `sfc`, DISM, `chkdsk`) are checked by exit code, so a step that fails is reported as `Warning`/`Error` rather than a false `Success`.
+- **Fault tolerant.** Each step is wrapped in error handling; a failure is logged and the run continues to the next step.
 
 ## Requirements
 
 - Windows 10 or Windows 11 (client or the equivalent Windows Server release).
 - Windows PowerShell 5.1 or PowerShell 7 or later.
 - Administrator privileges (an elevated terminal).
-- Optional: [WinGet](https://learn.microsoft.com/windows/package-manager/winget/)
-  (the App Installer) for step 1. If it is not present, application upgrades are skipped.
+- Optional: [WinGet](https://learn.microsoft.com/windows/package-manager/winget/) (the App Installer) for step 1. If it is not present, application upgrades are skipped.
 - An internet connection for application upgrades.
 
 ## Getting started
@@ -99,8 +83,7 @@ Forge Maintenance exists to add the guardrails a raw batch file lacks:
 1. Download `forge-maintenance.ps1` into a folder.
 2. Read through it so you know exactly what it will do.
 3. Open PowerShell **as Administrator** in that folder.
-4. If the file was downloaded from the internet, clear the block flag and allow the script
-   to run for this session only:
+4. If the file was downloaded from the internet, clear the block flag and allow the script to run for this session only:
 
    ```powershell
    Unblock-File .\forge-maintenance.ps1
@@ -115,18 +98,13 @@ Forge Maintenance exists to add the guardrails a raw batch file lacks:
 
 ### Option 2: Hosted one-liner
 
-If the script is hosted (for example on the GeekLord domain), it can be launched directly
-in an elevated PowerShell window:
+If the script is hosted (for example on the GeekLord domain), it can be launched directly in an elevated PowerShell window:
 
 ```powershell
 irm https://geeklord.com/forge-maintenance.ps1 | iex
 ```
 
-This fetches the script and runs it in the current session. Launched this way it runs
-interactively and prompts before each disruptive step, using its built-in defaults
-(parameters and `-Skip*` switches can only be passed when you run the downloaded file).
-Only use this pattern with a source you trust and, ideally, after reading the script at
-least once. See [Responsible use and security](#responsible-use-and-security).
+This fetches the script and runs it in the current session. Launched this way it runs interactively and prompts before each disruptive step, using its built-in defaults (parameters and `-Skip*` switches can only be passed when you run the downloaded file). Only use this pattern with a source you trust and, ideally, after reading the script at least once. See [Responsible use and security](#responsible-use-and-security).
 
 ## Usage
 
@@ -198,19 +176,13 @@ Run unattended, auto-approving every prompt:
 ## Logging and reporting
 
 - Each run writes a transcript to `<LogDirectory>\forge-maintenance_<yyyyMMdd_HHmmss>.log`.
-- The default log directory is `C:\ProgramData\GeekLord\Logs`; override it with
-  `-LogDirectory`.
-- At the end of the session the script prints a summary table listing every step with its
-  timestamp, status (`Success`, `Skipped`, `Warning`, `Error`, `Preview`, or `Cancelled`),
-  and details.
+- The default log directory is `C:\ProgramData\GeekLord\Logs`; override it with `-LogDirectory`.
+- At the end of the session the script prints a summary table listing every step with its timestamp, status (`Success`, `Skipped`, `Warning`, `Error`, `Preview`, or `Cancelled`), and details.
 - Review the transcript for a complete record of the commands that ran and their output.
 
 ## Legacy batch script
 
-`Computer Maintainance.bat` is the original batch version that inspired this project. It
-performs the same six maintenance tasks but without restore points, logging, confirmation
-prompts, or selective execution. It is kept for reference and comparison; the PowerShell
-script is the recommended way to run maintenance.
+`Computer Maintainance.bat` is the original batch version that inspired this project. It performs the same six maintenance tasks but without restore points, logging, confirmation prompts, or selective execution. It is kept for reference and comparison; the PowerShell script is the recommended way to run maintenance.
 
 ## Project structure
 
@@ -224,46 +196,32 @@ Windows Maintenance Script/
 
 ## Responsible use and security
 
-This tool is designed around the idea that convenience should not come at the cost of
-transparency. A few habits worth keeping, whether you use this script or any other remote
-PowerShell:
+This tool is designed around the idea that convenience should not come at the cost of transparency. A few habits worth keeping, whether you use this script or any other remote PowerShell:
 
 - Prefer to download and read a script before running it, especially in elevated sessions.
-- Only use `irm ... | iex` with sources you trust, served over HTTPS from a domain you
-  recognize.
+- Only use `irm ... | iex` with sources you trust, served over HTTPS from a domain you recognize.
 - Keep source readable rather than obfuscated so it can be audited.
-- Build safety into the script itself. Forge Maintenance does this with restore points,
-  logging, and confirmation prompts.
+- Build safety into the script itself. Forge Maintenance does this with restore points, logging, and confirmation prompts.
 
-The accompanying `blog_post.html` goes deeper on how `irm | iex` works, why the pattern is
-popular, and how to weigh its risks.
+The accompanying `blog_post.html` goes deeper on how `irm | iex` works, why the pattern is popular, and how to weigh its risks.
 
 ## Troubleshooting
 
-- **"must run in an elevated PowerShell window"** (or a `ScriptRequiresElevation` error).
-  Start PowerShell with *Run as administrator* and try again.
-- **The script will not run / execution policy error.** Unblock the file and allow it for
-  the current session:
+- **"must run in an elevated PowerShell window"** (or a `ScriptRequiresElevation` error). Start PowerShell with *Run as administrator* and try again.
+- **The script will not run / execution policy error.** Unblock the file and allow it for the current session:
 
   ```powershell
   Unblock-File .\forge-maintenance.ps1
   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
   ```
 
-- **WinGet step is skipped.** WinGet (App Installer) is not installed or not on `PATH`.
-  Install it from the Microsoft Store, or use `-SkipWinget` to silence the notice.
-- **Restore point was not created.** Windows creates at most one restore point per 24
-  hours by default, and System Restore must be enabled on the system drive. This is
-  recorded as a warning and does not stop the run.
-- **Check Disk did not run.** `chkdsk /r` is scheduled for the next reboot; restart the
-  computer to let it complete. Expect a longer-than-usual startup while it runs.
+- **WinGet step is skipped.** WinGet (App Installer) is not installed or not on `PATH`. Install it from the Microsoft Store, or use `-SkipWinget` to silence the notice.
+- **Restore point was not created.** Windows creates at most one restore point per 24 hours by default, and System Restore must be enabled on the system drive. This is recorded as a warning and does not stop the run.
+- **Check Disk did not run.** `chkdsk /r` is scheduled for the next reboot; restart the computer to let it complete. Expect a longer-than-usual startup while it runs.
 
 ## Disclaimer
 
-This script performs system-level maintenance, including networking resets, Windows
-component repair, and scheduling a full disk check. Review it before running, ensure you
-have current backups, and use it at your own risk. The author is not responsible for any
-loss or damage resulting from its use.
+This script performs system-level maintenance, including networking resets, Windows component repair, and scheduling a full disk check. Review it before running, ensure you have current backups, and use it at your own risk. The author is not responsible for any loss or damage resulting from its use.
 
 ## Author
 
